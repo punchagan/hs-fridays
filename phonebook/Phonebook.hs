@@ -61,7 +61,6 @@ instance FromJSON Phonebook
 instance ToJSON Phonebook
 
 pbCreate :: Phonebook
--- fixme: check if pb already exists and raise error!
 pbCreate = Phonebook []
 
 
