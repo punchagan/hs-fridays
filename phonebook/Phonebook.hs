@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
-
 module Phonebook where
-
+--
 {--
 
 Build a command line tool that manages phone books, via the interface below.
@@ -37,20 +36,18 @@ import Control.Applicative
 
 import Data.Aeson
 import qualified Data.Map as M
-import qualified Data.ByteString.Lazy as BS
+import Data.List
 
 import GHC.Generics
-
-import System.Directory
-import System.Environment
-import System.Exit
-import System.IO
 
 -- A contact
 data Contact = Contact {
     name :: String,
     phone :: String
-} deriving (Show, Generic)
+} deriving (Generic, Eq)
+
+instance Show Contact where
+  show (Contact name phone) = name ++ " " ++ phone
 
 instance FromJSON Contact
 instance ToJSON Contact
@@ -58,57 +55,54 @@ instance ToJSON Contact
 -- A Phonebook
 data Phonebook = Phonebook {
     contacts :: [Contact]
-} deriving (Show, Generic)
+} deriving (Show, Generic, Eq)
 
 instance FromJSON Phonebook
 instance ToJSON Phonebook
 
--- fixme: They should really be a command interface, I think...
-commandMap = M.fromList [("add", add), ("create", create), ("change", change), ("lookup", myLookup), ("remove", remove), ("reverseLookup", reverseLookup)]
+pbCreate :: Phonebook
+-- fixme: check if pb already exists and raise error!
+pbCreate = Phonebook []
 
-add :: [String] -> IO ()
-add (name:phone:dbPath:[]) = writeDB dbPath (addContact <$> (readDB dbPath) <*> (Contact name phone))
-add _ = undefined
 
-create :: [String] -> IO ()
-create (x:[]) = writeDB x (Phonebook [])
-create _ = undefined
+pbAdd :: Contact -> Phonebook -> Either String Phonebook
+pbAdd contact pb@(Phonebook contacts) = if M.notMember (name contact) phonemap
+                                      then Right $ Phonebook $ contact:contacts
+                                      else Left $ "Contact already exists: " ++ (name contact)
+                                          where phonemap = toMap pb
 
-change :: [String] -> IO ()
-change _ = putStrLn "Not implemented!"
+pbChange :: Contact -> Phonebook -> Either String Phonebook
+pbChange contact pb = case (pbRemove (name contact) pb) of
+                        (Left msg) -> Left msg
+                        (Right pb') -> pbAdd contact pb'
 
-remove :: [String] -> IO ()
-remove _ = putStrLn "Not implemented!"
 
-myLookup :: [String] -> IO ()
-myLookup _ = putStrLn "Not implemented!"
+pbRemove :: String -> Phonebook -> Either String Phonebook
+pbRemove name pb@(Phonebook contacts) = if M.notMember name phonemap
+                                        then Left $ "Unknown contact: " ++ name
+                                        else Right $ fromMap $ M.delete name phonemap
+    where phonemap = toMap pb
 
-reverseLookup :: [String] -> IO ()
-reverseLookup _ = putStrLn "Not implemented!"
+pbLookup :: String -> Phonebook -> [Contact]
+pbLookup query (Phonebook contacts) = foldr (startsWith query) [] contacts
+    where startsWith query contact contacts' = if isInfixOf query (name contact)
+                                               then contact:contacts'
+                                               else contacts'
 
--- Helper functions --
+pbReverseLookup :: String -> Phonebook -> [Contact]
+pbReverseLookup query (Phonebook contacts) = foldr (numberMatches query) [] contacts
+    where numberMatches query contact contacts' = if query == (phone contact)
+                                                  then contact:contacts'
+                                                  else contacts'
 
-readDB :: FilePath ->  IO (Either String Phonebook)
-readDB dbPath = fmap eitherDecode (BS.readFile dbPath) :: IO (Either String Phonebook)
+-- Helper functions
+-- fixme: use functors and applicatives?
+toMap phonebook = M.fromList $ toList phonebook where
+    toList (Phonebook []) = []
+    toList (Phonebook (contact:contacts)) = (toPair contact):(toList $ Phonebook contacts) where
+                                                toPair (Contact n p) = (n, p)
 
-writeDB :: FilePath -> Phonebook -> IO ()
-writeDB dbPath phonebook = BS.writeFile dbPath $ encode $ phonebook
-
-performCommand :: [String] -> IO ()
-performCommand [] = putStrLn "Need a command argument."
-performCommand (x:xs) = if M.member x commandMap then (y xs) else putStrLn "Unknown command!"
-    where (Just y) = M.lookup x commandMap
-
-addContact :: Phonebook -> Contact -> Phonebook
-addContact (Phonebook pb) contact = Phonebook (contact:pb)
-
-------------------------------------------------------------------------
-
-main = do
-    args <- getArgs
-
-    if length args < 2
-        then do
-            putStrLn "Need atleast two arguments: <command-name> <phone-book>"
-            exitFailure
-        else performCommand args
+fromMap m = fromList $ M.toList m where
+    fromList [] = Phonebook []
+    fromList ((name, phone):xs) = Phonebook $ (Contact name phone):(map fromPair xs) where
+                                  fromPair (n, p) = Contact n p
