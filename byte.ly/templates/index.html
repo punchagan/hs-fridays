@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Shorten me</h2>
+{% with messages = get_flashed_messages() %}
+{% if messages %}
+<ul class=flashes>
+  {% for message in messages %}
+  <li>{{ message }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endwith %}
+<form action="{{ url_for('shorten') }}" method=post>
+  <dl>
+    <dt>URL
+      <dd><input type=text name=url>
+      <dd><input type=submit value=Shorten!>
+  </dl>
+</form>
+{% endblock %}
