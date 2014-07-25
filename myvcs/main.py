@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 import os
-from os.path import exists, isdir, join
+from os.path import basename, exists, isdir, join
 import shutil
+import string
 import sys
 
 META_DIR = '.myvcs'
@@ -26,7 +27,7 @@ def get_versions(path):
     if exists(backup_dir):
         versions = [
             name for name in os.listdir(join(path, META_DIR))
-            if name != 'stash'
+            if name.startswith(tuple(string.digits))
         ]
     else:
         versions = []
@@ -35,7 +36,7 @@ def get_versions(path):
 def stash_exists(path):
     return exists(join(path, META_DIR, 'stash'))
 
-def snapshot(path, version=None):
+def commit(path, version=None):
     versions = get_versions(path)
 
     def is_backup_dir(src, names):
@@ -45,6 +46,8 @@ def snapshot(path, version=None):
 
     if version == None:
         backup_dir = get_next_backup_dir(join(path, META_DIR), versions)
+        print versions
+        track_version(path, basename(backup_dir))
 
     elif version == 'stash':
         backup_dir = join(path, META_DIR, version)
@@ -59,7 +62,7 @@ def snapshot(path, version=None):
 
 
 def checkout_version(path, version):
-    snapshot_dir = join(path, META_DIR, version)
+    commit_dir = join(path, META_DIR, version)
 
     for name in os.listdir(path):
         if name == META_DIR:
@@ -70,12 +73,15 @@ def checkout_version(path, version):
         else:
             os.remove(full_path)
 
-    for name in os.listdir(snapshot_dir):
-        full_path = join(snapshot_dir, name)
+    for name in os.listdir(commit_dir):
+        full_path = join(commit_dir, name)
         if isdir(full_path):
             shutil.copytree(full_path, join(path, name))
         else:
             shutil.copy(full_path, join(path, name))
+    
+    if version is not 'stash':
+        track_version(path, version)
 
 def checkout(path, version):
     versions = get_versions(path)
@@ -86,9 +92,17 @@ def checkout(path, version):
     elif version not in versions:           
         print 'No such version'
     else:
-        snapshot(path, version='stash')
+        commit(path, version='stash')
         checkout_version(path, version)
 
+def track_version(path, version):
+    with open(join(path, META_DIR, 'head'), 'w') as f:
+        f.write(version)
+
+def print_version(path):
+    with open(join(path, META_DIR, 'head')) as f:
+        print f.read()
+    
 
 if __name__ == '__main__':
     # FIXME: This is a bad idea.  It should look for a .myvcs somewhere up in
@@ -98,13 +112,16 @@ if __name__ == '__main__':
 
     command = sys.argv[1]
     if command == 'commit':
-        snapshot(path)
+        commit(path)
 
     elif command == 'checkout':
         checkout(path, sys.argv[2])
     
     elif command == 'latest':
         checkout(path, 'stash')
+    
+    elif command == 'current':
+        print_version(path)
         
     else:
         print 'Unknown command!'
