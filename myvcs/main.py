@@ -33,6 +33,10 @@ def get_versions(path):
         versions = []
     return versions
 
+def get_max_version(versions):
+    version = max([int(i) for i in versions])    
+    return str(version)
+
 def stash_exists(path):
     return exists(join(path, META_DIR, 'stash'))
 
@@ -80,15 +84,16 @@ def checkout_version(path, version):
         else:
             shutil.copy(full_path, join(path, name))
     
-    if version is not 'stash':
-        track_version(path, version)
+    if version is 'stash':
+        version = get_max_version(get_versions(path))
+    track_version(path, version)
 
 def checkout(path, version):
     versions = get_versions(path)
     if version == 'stash':
         if not stash_exists(path):
-            version = max([int(i) for i in versions])
-        checkout_version(path, str(version))
+            version = get_max_version(versions)
+        checkout_version(path, version)
     elif version not in versions:           
         print 'No such version'
     else:
