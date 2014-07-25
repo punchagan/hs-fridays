@@ -21,7 +21,7 @@ def backup(path):
 def get_next_backup_dir(backup_dir, versions):
     return join(backup_dir, str(len(versions) + 1))
 
-def get_versions():
+def get_versions(path):
     backup_dir = join(path, META_DIR)
     if exists(backup_dir):
         versions = [
@@ -32,8 +32,11 @@ def get_versions():
         versions = []
     return versions
 
+def stash_exists(path):
+    return exists(join(path, META_DIR, 'stash'))
+
 def snapshot(path, version=None):
-    versions = get_versions()
+    versions = get_versions(path)
 
     def is_backup_dir(src, names):
         if src == path:
@@ -75,8 +78,12 @@ def checkout_version(path, version):
             shutil.copy(full_path, join(path, name))
 
 def checkout(path, version):
-    versions = get_versions()
-    if version not in versions:
+    versions = get_versions(path)
+    if version == 'stash':
+        if not stash_exists(path):
+            version = max([int(i) for i in versions])
+        checkout_version(path, str(version))
+    elif version not in versions:           
         print 'No such version'
     else:
         snapshot(path, version='stash')
@@ -95,7 +102,10 @@ if __name__ == '__main__':
 
     elif command == 'checkout':
         checkout(path, sys.argv[2])
-
+    
+    elif command == 'latest':
+        checkout(path, 'stash')
+        
     else:
         print 'Unknown command!'
         sys.exit(1)
