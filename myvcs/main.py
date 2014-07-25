@@ -3,11 +3,14 @@
   myvcs commit [-m <message>]
   myvcs checkout <version>
   myvcs current
+  myvcs diff <version1> <version2>
   myvcs latest
   myvcs log
 """
 
+import difflib
 import docopt
+import filecmp
 import json
 import os
 from os.path import basename, exists, isdir, join
@@ -160,6 +163,49 @@ def print_log(path):
         print '\n    %s' % metadata['message']
         print '\n'
 
+def print_diff(path, version1, version2):
+    path1 = join(path, META_DIR, version1)
+    path2 = join(path, META_DIR, version2)
+    print_dir_diff(path1, path2)
+
+def print_dir_diff(path1, path2):
+    diff_report = filecmp.dircmp(path1, path2)
+    
+    diff_files = diff_report.diff_files
+    for file in diff_files:
+        print_file_diff(join(path1, file), join(path2, file))
+    
+    common_dirs = diff_report.common_dirs
+    for dir in common_dirs:
+        print_dir_diff(join(path1, dir), join(path2, dir))
+    
+    left_only, right_only = diff_report.left_only, diff_report.right_only
+    for left in left_only:
+        path = join(path1, left)
+        if isdir(path):
+            print '--- %s' % path
+        else:
+            print_file_diff(path, '/dev/null')
+    
+    for right in right_only:
+        path = join(path2, right)
+        if isdir(path):
+            print '+++ %s' % path
+        else:
+            print_file_diff('/dev/null', path)
+
+def get_text(file):
+    if file == '/dev/null':
+        text = ''
+    else:
+        with open(file) as f:
+            text = f.readlines()
+    return text
+
+def print_file_diff(file1, file2):
+    for line in difflib.unified_diff(get_text(file1), get_text(file2), file1, file2):
+        print line.strip()
+    print
 
 def parse_arguments(args=None):
     if args is None:
@@ -192,6 +238,9 @@ if __name__ == '__main__':
 
     elif args['log']:
         print_log(path)
+    
+    elif args['diff']:
+        print_diff(path, args['<version1>'], args['<version2>'])
 
     else:
         print 'Unknown command!'
