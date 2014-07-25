@@ -1,11 +1,23 @@
 #!/usr/bin/env python
+"""Usage:
+  myvcs commit [-m <message>]
+  myvcs checkout <version>
+  myvcs current
+  myvcs latest
+  myvcs log
+"""
+
+import docopt
+import json
 import os
 from os.path import basename, exists, isdir, join
 import shutil
 import string
 import sys
+import time
 
 META_DIR = '.myvcs'
+LOG_FILE = '.log.json'
 
 def backup(path):
     backup_dir = join(path, META_DIR)
@@ -18,6 +30,32 @@ def backup(path):
         return []
 
     shutil.copytree(path, backup_dir, ignore=is_backup_dir)
+
+def add_log(path, version, message):
+    log_file = join(path, META_DIR, LOG_FILE)
+    data = read_log(log_file)
+    data[version] = {
+        'timestamp': time.time(),
+        'message': message
+    }
+    write_log(log_file, data)
+
+def read_log(log_file):
+    if exists(log_file):
+        try:
+            with open(log_file) as f:
+                data = json.load(f)
+        except ValueError:
+            data = {}
+
+    else:
+        data = {}
+
+    return data
+
+def write_log(log_file, data):
+    with open(log_file, 'w') as f:
+        json.dump(data, f)
 
 def get_next_backup_dir(backup_dir, versions):
     return join(backup_dir, str(len(versions) + 1))
@@ -34,13 +72,13 @@ def get_versions(path):
     return versions
 
 def get_max_version(versions):
-    version = max([int(i) for i in versions])    
+    version = max([int(i) for i in versions])
     return str(version)
 
 def stash_exists(path):
     return exists(join(path, META_DIR, 'stash'))
 
-def commit(path, version=None):
+def commit(path, message=None, version=None):
     versions = get_versions(path)
 
     def is_backup_dir(src, names):
@@ -50,8 +88,11 @@ def commit(path, version=None):
 
     if version == None:
         backup_dir = get_next_backup_dir(join(path, META_DIR), versions)
-        print versions
-        track_version(path, basename(backup_dir))
+        version = basename(backup_dir)
+        if message is None:
+            print 'Need message'
+        else:
+            track_version(path, version)
 
     elif version == 'stash':
         backup_dir = join(path, META_DIR, version)
@@ -62,6 +103,7 @@ def commit(path, version=None):
         print 'Unknown version'
 
     shutil.copytree(path, backup_dir, ignore=is_backup_dir)
+    add_log(path, version, message)
     # FIXME: version 21?
 
 
@@ -83,7 +125,7 @@ def checkout_version(path, version):
             shutil.copytree(full_path, join(path, name))
         else:
             shutil.copy(full_path, join(path, name))
-    
+
     if version is 'stash':
         version = get_max_version(get_versions(path))
     track_version(path, version)
@@ -94,7 +136,7 @@ def checkout(path, version):
         if not stash_exists(path):
             version = get_max_version(versions)
         checkout_version(path, version)
-    elif version not in versions:           
+    elif version not in versions:
         print 'No such version'
     else:
         commit(path, version='stash')
@@ -107,27 +149,50 @@ def track_version(path, version):
 def print_version(path):
     with open(join(path, META_DIR, 'head')) as f:
         print f.read()
-    
+
+def print_log(path):
+    data = read_log(join(path, META_DIR, LOG_FILE))
+
+    for version in sorted(data):
+        metadata = data[version]
+        print 'Commit: %s' % version
+        print 'Date: %s' % time.ctime(metadata['timestamp'])
+        print '\n    %s' % metadata['message']
+        print '\n'
+
+
+def parse_arguments(args=None):
+    if args is None:
+        args = sys.argv
+
 
 if __name__ == '__main__':
     # FIXME: This is a bad idea.  It should look for a .myvcs somewhere up in
     # the tree, or current directory.
     path = os.getcwd()
-    assert len(sys.argv) > 1, 'Need a command to run'
+    args = docopt.docopt(__doc__)
 
-    command = sys.argv[1]
-    if command == 'commit':
-        commit(path)
+    if args['commit']:
+        message = args['<message>']
+        if message is None:
+            print 'No message specified. Use -m to specify one.'
+            print __doc__
+            # fixme: open editor.
+        else:
+            commit(path, message)
 
-    elif command == 'checkout':
+    elif args['checkout']:
         checkout(path, sys.argv[2])
-    
-    elif command == 'latest':
+
+    elif args['latest']:
         checkout(path, 'stash')
-    
-    elif command == 'current':
+
+    elif args['current']:
         print_version(path)
-        
+
+    elif args['log']:
+        print_log(path)
+
     else:
         print 'Unknown command!'
         sys.exit(1)
